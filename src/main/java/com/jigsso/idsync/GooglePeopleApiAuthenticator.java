@@ -11,6 +11,8 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.jboss.logging.Logger;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Google People API Post Login Authenticator
@@ -20,7 +22,7 @@ import org.jboss.logging.Logger;
 public class GooglePeopleApiAuthenticator implements Authenticator {
 
     private static final Logger logger = Logger.getLogger(GooglePeopleApiAuthenticator.class);
-    private static final String GOOGLE_PEOPLE_API_URL = "https://people.googleapis.com/v1/people/me?personFields=names,emailAddresses,organizations,externalIds";
+    private static final String GOOGLE_PEOPLE_API_URL = "https://people.googleapis.com/v1/people/me?personFields=organizations,externalIds";
     private static final String GOOGLE_PROVIDER_ID = "google";
 
     @Override
@@ -52,7 +54,7 @@ public class GooglePeopleApiAuthenticator implements Authenticator {
                 logger.info("사용자 " + user.getUsername() + "의 액세스 토큰 추출 성공");
 
                 // Google People API 호출
-                callGooglePeopleApi(accessToken, user.getUsername());
+                callGooglePeopleApi(accessToken, user.getUsername(), context, user);
             } else {
                 logger.warn("사용자 " + user.getUsername() + "의 유효한 Google 액세스 토큰을 찾을 수 없습니다");
             }
@@ -174,7 +176,8 @@ public class GooglePeopleApiAuthenticator implements Authenticator {
         return null;
     }
 
-    private void callGooglePeopleApi(String accessToken, String username) {
+    private void callGooglePeopleApi(String accessToken, String username, AuthenticationFlowContext context,
+            UserModel user) {
         logger.info("=== Google People API 호출 시작 ===");
         logger.info("사용자: " + username);
         logger.info("API URL: " + GOOGLE_PEOPLE_API_URL);
@@ -222,6 +225,8 @@ public class GooglePeopleApiAuthenticator implements Authenticator {
                 }
             } else if (statusCode == 200) {
                 logger.info("=== API 호출 성공! ===");
+                // 응답 데이터를 파싱하여 사용자 프로필 업데이트
+                updateUserProfile(responseBody, context, user);
             }
 
         } catch (Exception e) {
@@ -231,6 +236,106 @@ public class GooglePeopleApiAuthenticator implements Authenticator {
         }
 
         logger.info("=== Google People API 호출 완료 ===");
+    }
+
+    /**
+     * Google People API 응답을 파싱하여 사용자 프로필 업데이트
+     */
+    private void updateUserProfile(String responseBody, AuthenticationFlowContext context, UserModel user) {
+        logger.info("=== 사용자 프로필 업데이트 시작 ===");
+
+        try {
+            // externalId 추출 및 업데이트
+            String externalId = extractExternalId(responseBody);
+            if (externalId != null && !externalId.trim().isEmpty()) {
+                logger.info("External ID 추출 성공: " + externalId);
+                user.setSingleAttribute("externalId", externalId);
+                logger.info("사용자 프로필에 externalId 설정 완료");
+            } else {
+                logger.warn("External ID를 찾을 수 없습니다");
+            }
+
+            // department 추출 및 업데이트
+            String department = extractDepartment(responseBody);
+            if (department != null && !department.trim().isEmpty()) {
+                logger.info("Department 추출 성공: " + department);
+                user.setSingleAttribute("department", department);
+                logger.info("사용자 프로필에 department 설정 완료");
+            } else {
+                logger.warn("Department를 찾을 수 없습니다");
+            }
+
+            logger.info("=== 사용자 프로필 업데이트 완료 ===");
+
+        } catch (Exception e) {
+            logger.error("사용자 프로필 업데이트 중 오류 발생", e);
+        }
+    }
+
+    /**
+     * JSON 응답에서 첫 번째 externalId 값 추출
+     */
+    private String extractExternalId(String responseBody) {
+        try {
+            logger.info("External ID 추출 시도 중...");
+            
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode json = mapper.readTree(responseBody);
+            
+            if (json.has("externalIds")) {
+                JsonNode externalIds = json.get("externalIds");
+                
+                if (externalIds.isArray() && externalIds.size() > 0) {
+                    JsonNode firstExternalId = externalIds.get(0);
+                    
+                    if (firstExternalId.has("value")) {
+                        String externalId = firstExternalId.get("value").asText();
+                        logger.info("External ID 파싱 성공: " + externalId);
+                        return externalId;
+                    }
+                }
+            }
+            
+            logger.warn("External ID를 찾을 수 없습니다");
+            return null;
+
+        } catch (Exception e) {
+            logger.error("External ID 추출 중 오류 발생", e);
+            return null;
+        }
+    }
+
+    /**
+     * JSON 응답에서 첫 번째 organization의 department 값 추출
+     */
+    private String extractDepartment(String responseBody) {
+        try {
+            logger.info("Department 추출 시도 중...");
+            
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode json = mapper.readTree(responseBody);
+            
+            if (json.has("organizations")) {
+                JsonNode organizations = json.get("organizations");
+                
+                if (organizations.isArray() && organizations.size() > 0) {
+                    JsonNode firstOrg = organizations.get(0);
+                    
+                    if (firstOrg.has("department")) {
+                        String department = firstOrg.get("department").asText();
+                        logger.info("Department 파싱 성공: " + department);
+                        return department;
+                    }
+                }
+            }
+            
+            logger.warn("Department를 찾을 수 없습니다");
+            return null;
+
+        } catch (Exception e) {
+            logger.error("Department 추출 중 오류 발생", e);
+            return null;
+        }
     }
 
     @Override
