@@ -351,40 +351,14 @@ public class GooglePeopleApiAuthenticator implements Authenticator {
 
     @Override
     public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
-        System.err.println("hello");
-        return true;
-        // // 강제 ERROR 레벨로 출력하여 반드시 로그에 나타나도록 함
-        // logger.error("=== configuredFor 호출됨 ===");
-        // logger.error("User: " + (user != null ? user.getUsername() : "NULL"));
-
-        // // PoC: 사용자가 정상적으로 존재하고 Google IDP로 로그인한 경우만 실행
-        // if (user == null) {
-        // logger.error("=== 사용자가 null이므로 SPI 실행하지 않음 ===");
-        // logger.debug("사용자가 null이므로 SPI 실행하지 않음");
-        // return false;
-        // }
-
-        // // 사용자 ID가 있는지 확인 (정상적으로 생성된 사용자인지)
-        // if (user.getId() == null || user.getId().trim().isEmpty()) {
-        // logger.debug("사용자 ID가 없으므로 SPI 실행하지 않음");
-        // return false;
-        // }
-
-        // // Google IDP로 로그인한 사용자인지 확인
-        // try {
-        // FederatedIdentityModel federatedIdentity = session.users()
-        // .getFederatedIdentity(realm, user, GOOGLE_PROVIDER_ID);
-        // boolean isGoogleUser = federatedIdentity != null;
-        // logger.error("=== Google IDP 사용자 여부: " + isGoogleUser + " ===");
-        // logger.debug("Google IDP 사용자 여부: " + isGoogleUser + " (사용자: " +
-        // user.getUsername() + ")");
-        // return isGoogleUser;
-        // } catch (Exception e) {
-        // logger.error("=== configuredFor에서 예외 발생: " + e.getMessage() + " ===");
-        // logger.warn("Google IDP 확인 중 오류 발생, SPI 실행하지 않음: " + e.getMessage());
-        // return false;
-        // }
+        String email = user.getEmail();
+        if (email == null || !email.endsWith("@jbnu.ac.kr")) return false;
+    
+        FederatedIdentityModel federatedIdentity =
+            session.users().getFederatedIdentity(realm, user, "google");
+        return (federatedIdentity != null && federatedIdentity.getToken() != null);
     }
+    
 
     @Override
     public void setRequiredActions(KeycloakSession session, RealmModel realm, UserModel user) {
